@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <pthread.h>
+#include "idxio.h"
 
 // Parâmetros iniciais
 #define XMIN -2.5
@@ -14,6 +15,13 @@
 #define WIDTH 5600
 #define HEIGHT 3200
 
+// Arquivo das amostras
+#define TRAIN_X "train_x.idx"
+#define TRAIN_Y "train_y.idx"
+// Arquivo das amostras de teste
+#define TEST_X "test_x.idx"
+#define TEST_Y "test_y.idx"
+
 // Estrutura para o contexto de execução de cada thread
 struct PointsCtx {
 	double xmin;
@@ -21,7 +29,8 @@ struct PointsCtx {
 	double ymin;
 	double ymax;
 	int iterations;
-	double *data;
+	double *data_x;
+	double *data_y;
 	int M;
 	int width;
 	int height;
@@ -52,17 +61,25 @@ double iter(double cx, double cy, int iterations){
 void *points_func(void *vCtx){
 	struct PointsCtx *ctx = (struct PointsCtx *)vCtx;
 	int i, j;
-	for (int p = ctx->from; p < 3*ctx->to; p += 3){
-		j = (p/3) % ctx->width;
-		i = (p/3) / ctx->width;
-      ctx->data[p] = ctx->xmin + (ctx->xmax - ctx->xmin) * j / (ctx->width-1);
-      ctx->data[p+1] = ctx->ymin + (ctx->ymax - ctx->ymin) * i / (ctx->height-1);
-		ctx->data[p+2] = iter(ctx->data[p], ctx->data[p+1], ctx->iterations)/ctx->iterations;
+	for (int p = ctx->from; p < ctx->to; p++){
+		j = p % ctx->width;
+		i = p / ctx->width;
+		// No eixo real
+      ctx->data_x[2*p] = ctx->xmin + (ctx->xmax - ctx->xmin) * j / (ctx->width-1);
+		// No eixo imaginário
+      ctx->data_x[2*p+1] = ctx->ymin + (ctx->ymax - ctx->ymin) * i / (ctx->height-1);
+		// Iterações (variável dependente)
+		ctx->data_y[p] = iter(ctx->data_x[2*p], ctx->data_x[2*p+1], ctx->iterations)/ctx->iterations;
 	}
 	return NULL;
 }
 
 int main(){
+	// Variáveis independentes (coordenadas no plano complexo)
+	double *data_x = malloc(2*WIDTH*HEIGHT*sizeof(double));
+	// Variáveis dependentes (iterações para cada ponto no plano)
+	double *data_y = malloc(WIDTH*HEIGHT*sizeof(double));
+
 	// Contexto dos threads
 	struct PointsCtx ctx[2];
 
@@ -75,11 +92,12 @@ int main(){
 	ctx[0].width = WIDTH;
 	ctx[0].height = HEIGHT / 2;
 	// Quantidade de pontos para o thread
-	ctx[0].M = ctx[0].width*ctx[0].height / 2;
-	// Conjunto de pontos e respectivas iterações
-	ctx[0].data = malloc(3*ctx[0].M*sizeof(double));
+	ctx[0].M = ctx[0].width * ctx[0].height;
+	// Memória compartilhada
+	ctx[0].data_x = data_x;
+	ctx[0].data_y = data_y;
 	ctx[0].from = 0;
-	ctx[0].to = ctx[0].M / 2;
+	ctx[0].to = ctx[0].M;
 
 	// Contexto thread 1
 	ctx[1].xmin = XMIN;
@@ -90,11 +108,12 @@ int main(){
 	ctx[1].width = WIDTH;
 	ctx[1].height = HEIGHT / 2;
 	// Quantidade de pontos para o thread
-	ctx[1].M = ctx[1].width*ctx[1].height / 2;
-	// Conjunto de pontos e respectivas iterações
-	ctx[1].data = malloc(3*ctx[1].M*sizeof(double));
-	ctx[1].from = ctx[1].M / 2;
-	ctx[1].to = ctx[1].M;
+	ctx[1].M = ctx[1].width * ctx[1].height;
+	// Memória compartilhada
+	ctx[1].data_x = data_x;
+	ctx[1].data_y = data_y;
+	ctx[1].from = ctx[1].M;
+	ctx[1].to = 2 * ctx[1].M;
 
 	// Dois threads
 	pthread_t points_t[2];
@@ -120,6 +139,46 @@ int main(){
 		fprintf(stderr, "Error joining thread 1\n");
 		return -1;
 	}
+
+	// Armazenar amostras
+
+	// Variáveis independentes
+	struct Idx idx_train_x;
+	// Tipo double (8 bytes)
+	idx_train_x.type = 0x0e;
+	idx_train_x.dimCount = 2;
+	// Tamanho das dimensões é int (4 bytes)
+	idx_train_x.dimSizes = malloc(idx_train_x.dimCount*4);
+	idx_train_x.dimSizes[0] = WIDTH*HEIGHT;
+	// Cada ponto possui apenas duas coordenadas
+	idx_train_x.dimSizes[1] = 2;
+	idx_train_x.size = 1;
+	for (int d = 0; d < idx_train_x.dimCount; d++) idx_train_x.size *= idx_train_x.dimSizes[d];
+	idx_train_x.data.d = data_x;
+	idxSave(TRAIN_X, &idx_train_x);
+
+	// Variáveis dependentes
+	struct Idx idx_train_y;
+	// Tipo double (8 bytes)
+	idx_train_y.type = 0x0e;
+	idx_train_y.dimCount = 2;
+	// Tamanho das dimensões é int (4 bytes)
+	idx_train_y.dimSizes = malloc(idx_train_y.dimCount*4);
+	idx_train_y.dimSizes[0] = WIDTH*HEIGHT;
+	// A variável dependente é um valor real
+	idx_train_y.dimSizes[1] = 1;
+	idx_train_y.size = 1;
+	for (int d = 0; d < idx_train_y.dimCount; d++) idx_train_y.size *= idx_train_y.dimSizes[d];
+	// Copiar as coordenadas dos dois contextos
+	idx_train_y.data.d = data_y;
+	idxSave(TRAIN_Y, &idx_train_y);
+	/*
+	idx.dimSizes[1] = 1;
+	idx.size = 1;
+	for (int d = 0; d < idx.dimCount; d++) idx.size *= idx.dimSizes[d];
+	idx.data.f = train[1]._;
+	idxSave(TRAIN_Y, &idx);
+	*/
 
 	printf("Quantidade de pontos gerados: %d\n", ctx[0].M + ctx[1].M);
 
