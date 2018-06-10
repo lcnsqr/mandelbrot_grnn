@@ -1,10 +1,14 @@
 CC=gcc
-OPTIONS=-O3
+OPTIONS=-O2
 
-all: gerador
+all: gerador grnn
 
 gerador: gerador.c
+#	$(CC) gerador.c -lm -lpthread `sdl2-config --cflags --libs` $(OPTIONS) -o $@
 	$(CC) gerador.c -lm -lpthread $(OPTIONS) -o $@
 
+grnn: grnn.c
+	$(CC) grnn.c -lm $(OPTIONS) -o $@
+
 clean:
-	rm gerador
+	rm gerador grnn
