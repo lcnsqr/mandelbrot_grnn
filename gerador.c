@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <pthread.h>
 #include <time.h>
 #include "idxio.h"
 
@@ -122,7 +121,7 @@ int main(){
 	trainCtx.iterations = ITERATIONS;
 	trainCtx.width = WIDTH;
 	trainCtx.height = HEIGHT;
-	// Quantidade de pontos para o thread
+	// Quantidade de pontos 
 	trainCtx.M = trainCtx.width * trainCtx.height;
 	// Memória compartilhada
 	trainCtx.data_x = train_data_x;
@@ -138,7 +137,7 @@ int main(){
 	testCtx.iterations = ITERATIONS;
 	testCtx.width = WIDTH;
 	testCtx.height = HEIGHT;
-	// Quantidade de pontos para o thread
+	// Quantidade de pontos 
 	testCtx.M = (testCtx.width * testCtx.height) / 10;
 	// Memória compartilhada
 	testCtx.data_x = test_data_x;
